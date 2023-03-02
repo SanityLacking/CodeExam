@@ -2,29 +2,28 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import os
-
+from datasets_cifar10 import trainloader
 ### example model to use in the exam, builds basic cnn torch model and saves it to the models folder.
 
 
 class Net(nn.Module):
     def __init__(self):
-        super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
-        self.fc1 = nn.Linear(128 * 7 * 7, 128)
-        self.fc2 = nn.Linear(128, 10)
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.max_pool2d(x, 2)
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2)
-        x = F.relu(self.conv3(x))
-        x = x.view(-1, 128 * 7 * 7)
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
 
 # initialize the network
 net = Net()
@@ -46,4 +45,11 @@ for var_name in optimizer.state_dict():
     print(var_name, "\t", optimizer.state_dict()[var_name])
 
 
-torch.save(net.state_dict(), os.path.join('./models/', 'model.py'))
+torch.save(net,os.path.join('./models/', 'model.pt'))
+
+
+# torch.save(net , os.path.join('./models/', 'model.pth'))
+batch = next(iter(trainloader))
+# print(batch)
+# traced_model = torch.jit.script(net)
+# torch.jit.save(traced_model,os.path.join('./models/', 'model_jit.pt'))
