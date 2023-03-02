@@ -5,11 +5,71 @@ from torch.utils.data import DataLoader
 import numpy as np
 import sys
 import traceback
-from datasets_cifar10 import train_dataset, test_dataset
-# from datasets_subcifar10 import train_dataset, test_dataset
 from tqdm import tqdm
+import pandas as pd
+import seaborn as sn
+import matplotlib.pyplot as plt
+from sklearn.metrics import classification_report
+from datetime import datetime
 
+#local imports
+from datasets_cifar10 import train_dataset, test_dataset
 from model import Net
+
+def build_confusion_matrix(model, dataloader, labelClasses=[0,1,2,3,4,5,6,7,8,9]):
+    ''' builds a confusion matrix showing the interaction of the different classes, and distribution of TP and FP between each class.
+        model's input shape and output shape needs to match provided dataset input shape and target set respectively.
+        produces a matplotlib graph output and saves it to the results folder.
+    '''
+    from sklearn.metrics import confusion_matrix
+
+    resultsDict = {}
+    predictions = []
+    results = []
+    num_samples = 0
+    confidences = []
+    accuracies = []
+    outputs = []
+    results = []
+    labels = []
+    
+     # Iterate over the data loader and collect predictions and ground truth
+    for i, (inputs, targets) in enumerate(dataloader):
+        print("\rtest evaluation: "+str(i)+" of "+str(len(dataloader)-1),end='')
+        inputs = inputs.cuda()
+        targets = targets.cuda()
+
+        # Make predictions
+        outputs = model(inputs)
+        predictions = F.softmax(outputs, dim=1).detach().cpu().numpy()
+
+        # Update calibration metrics
+        num_samples += len(targets)
+        confidences.extend(predictions[:, 1])
+        results.extend(np.argmax(predictions, axis=1))
+        labels.extend(targets.cpu().numpy())
+        accuracies.extend(targets.cpu().numpy() == np.argmax(predictions, axis=1))
+    print("") ## newline for output formatting
+    
+    for i, labelClass in enumerate(labelClasses):        
+        resultsDict[labelClass]={}
+                
+    df_pred = pd.DataFrame(predictions)
+    df = pd.DataFrame(list(zip(results, labels,confidences, accuracies)), columns=["prediction","label","confidence","accuracy"])
+    
+    
+    df_confusion = pd.crosstab([results], [labels], rownames=['Actual Class'], colnames=['Predicted Class'], margins=True)
+    print(df_confusion)
+    
+
+    plt.figure(figsize = (10,7))
+    sn.heatmap(df_confusion, annot=True,cbar=False,cmap="plasma_r",fmt='d',linewidth=.5)    
+    mapName = "./results/{}_{}_confusionMatrix.jpg".format(checkpoint.__class__.__name__,datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p"))
+    plt.savefig(mapName)
+    print("HeatMap saved to results folder as: {}".format(mapName))    
+
+    return True
+        
 
 import pandas as pd
 import seaborn as sn
