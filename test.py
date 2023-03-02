@@ -48,7 +48,7 @@ def build_confusion_matrix(labels, predictions, labelClasses=[],Print=True):
 
     return True
         
-def compute_calibration_metrics(model, dataloader):
+def compute_calibration_metrics(model, dataLoader):
     ''' computes the calibration metrics for the loaded model against the chosen dataset.
         model's input shape and output shape needs to match provided dataset input shape and target set respectively.
 
@@ -63,7 +63,7 @@ def compute_calibration_metrics(model, dataloader):
     accuracies = []
 
     # Iterate over the data loader and collect predictions and ground truth
-    for i, data in tqdm(enumerate(dataloader,0),unit="batch",total=len(dataloader)):
+    for i, (inputs, targets) in enumerate(dataLoader):
     # for inputs, targets in dataloader:
         inputs = inputs.cuda()
         targets = targets.cuda()
@@ -141,16 +141,19 @@ def evalModel(model):
         print("") ## newline for output formatting
         
 
-        df = pd.DataFrame(list(zip(results, labels,confidences, accuracies)), columns=["prediction","label","confidence","accuracy"])
-        print("Output DataFrame head")
-        print(df.head())
+        # df = pd.DataFrame(list(zip(results, labels,confidences, accuracies)), columns=["prediction","label","confidence","accuracy"])
+        # print("Output DataFrame head")
+        # print(df.head())
 
         labelClasses= [0,1,2,3,4,5,6,7,8,9]
 
-        build_classification_report(labels,results, labelClasses)
+        # build_classification_report(labels,results, labelClasses)
 
-        build_confusion_matrix(labels,results, labelClasses)
+        # build_confusion_matrix(labels,results, labelClasses)
     
+        expected_calibration_error, max_calibration_error = compute_calibration_metrics(model, dataLoader)
+        print("Expected Calibration Error: {:.2f}%".format(expected_calibration_error))
+        print("Max Calibration Error: {:.2f}%".format(max_calibration_error))
 
     except Exception as e:        
         traceback.print_exc()
