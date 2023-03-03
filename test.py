@@ -4,6 +4,7 @@ from sklearn.metrics import brier_score_loss
 from torch.utils.data import DataLoader
 import numpy as np
 import sys
+import os
 import traceback
 from tqdm import tqdm
 import pandas as pd
@@ -11,10 +12,20 @@ import seaborn as sn
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report
 from datetime import datetime
-
+from PIL import Image
+from sklearn.cluster import KMeans
+from torchvision import transforms
+from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader, random_split
+import argparse
+import torchvision.transforms as T
+transform = T.ToPILImage()
 #local imports
-from datasets_cifar10 import train_dataset, test_dataset
+
 from model import Net
+FP_PATH = "./results/false_positives/"
+DATASET_PATH ="./data/cifar-10-batches-py/"
+
 
 def build_classification_report(labels, predictions, labelClasses=[],Print=True):
     ''''
@@ -48,7 +59,7 @@ def build_confusion_matrix(labels, predictions, labelClasses=[],Print=True):
 
     return True
         
-def compute_calibration_metrics(model, dataloader):
+def compute_calibration_metrics(model, dataLoader, labelClasses, K=10):
     ''' computes the calibration metrics for the loaded model against the chosen dataset.
         model's input shape and output shape needs to match provided dataset input shape and target set respectively.
 
@@ -61,9 +72,18 @@ def compute_calibration_metrics(model, dataloader):
     num_samples = 0
     confidences = []
     accuracies = []
-
+    num_classes= len(labelClasses)
+    resultsDict = {}
+    results = []
+    num_samples = 0
+    confidences = []
+    accuracies = []
+    outputs = []
+    results = []
+    probability=[]
+    labels = []
     # Iterate over the data loader and collect predictions and ground truth
-    for i, data in tqdm(enumerate(dataloader,0),unit="batch",total=len(dataloader)):
+    for inputs, targets in dataLoader:
     # for inputs, targets in dataloader:
         inputs = inputs.cuda()
         targets = targets.cuda()
@@ -71,26 +91,52 @@ def compute_calibration_metrics(model, dataloader):
         # Make predictions
         outputs = model(inputs)
         predictions = F.softmax(outputs, dim=1).detach().cpu().numpy()
-
+        results.extend(predictions)
+        probability.extend(np.amax(predictions, axis=1))
         # Update calibration metrics
         num_samples += len(targets)
-        confidences.extend(predictions[:, 1])
+        confidences.extend(np.amax(predictions,axis=1))
+        labels.extend(targets.cpu().numpy())
         accuracies.extend(targets.cpu().numpy() == np.argmax(predictions, axis=1))
 
     # Calculate expected calibration error
     ece = 0
     confidences = np.array(confidences)
     accuracies = np.array(accuracies)
-    bin_boundaries = np.linspace(0, 1, 11)
-    for bin_idx in range(10):
+
+    bin_calibration = []
+
+    bin_boundaries = np.linspace(0, 1, K+1)
+    for bin_idx in range(K):
         in_bin = np.logical_and(confidences >= bin_boundaries[bin_idx], confidences < bin_boundaries[bin_idx+1])
+
         if np.sum(in_bin) > 0:
-            ece += np.abs(np.mean(accuracies[in_bin]) - np.mean(confidences[in_bin]))
+            bin_cal = np.abs(np.mean(accuracies[in_bin]) - np.mean(confidences[in_bin]))
+            bin_calibration.append( bin_cal)
+            ece += bin_cal
+        else:
+            bin_calibration.append(0)
     ece *= 100
+    
+    sn.set_theme(style="whitegrid")
+    # print(bin_calibration)
+    plt.figure(figsize = (10,7))
+    for i , value in enumerate(bin_calibration):
+        plt.text(labelClasses[i], value+(value*0.01), "{:.2f}%".format(value*100), horizontalalignment='center',     verticalalignment='center')
+    graph_data= pd.DataFrame([bin_calibration],columns=[labelClasses])
+    plt.bar(labelClasses,bin_calibration,)
+    plt.title("Calibration error per class")
+    plt.xticks(labelClasses)
+    plt.ylabel("Error %")
+    plt.xlabel("Class ID")
+    graph_name = "./results/{}_{}_calibration_graph.png".format(checkpoint.__class__.__name__,datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p"))
+    plt.savefig(graph_name)
+
+    
 
     # Calculate max calibration error
     mce = 0
-    for bin_idx in range(10):
+    for bin_idx in range(K):
         in_bin = np.logical_and(confidences >= bin_boundaries[bin_idx], confidences < bin_boundaries[bin_idx+1])
         if np.sum(in_bin) > 0:
             mce = max(mce, np.abs(np.mean(accuracies[in_bin]) - np.mean(confidences[in_bin])) * 100)
@@ -98,13 +144,33 @@ def compute_calibration_metrics(model, dataloader):
     # Return calibration metrics
     return ece / 10, mce
 
- 
+def buildDataset():
+    ''' finds and builds the dataset from the provided path
+    '''
+    transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
 
-def evalModel(model):
+    # Load the dataset using the ImageFolder class
+    train_dataset = ImageFolder(root=DATASET_PATH+"/train", transform=transform)
+
+    test_dataset = ImageFolder(root=DATASET_PATH+"/test",  transform=transform)
+    val_size = int(len(train_dataset) * 0.1)
+    train_size = int(len(train_dataset)*0.9)
+    train_dataset, validation_dataset = random_split(train_dataset, [train_size, val_size])
+
+    return train_dataset, validation_dataset, test_dataset
+
+
+def evalModel(model,test_dataset):
     try:
         #load the dataset and set the batchsize
         batch_size = 32        
         # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
+        
         dataLoader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         
     except Exception as e:
@@ -122,8 +188,18 @@ def evalModel(model):
         results = []
         labels = []
         
+        labelClasses= [0,1,2,3,4,5,6,7,8,9]
+        
+        #   make sure the directory for the FP images exists
+        for  i in labelClasses:
+            if not os.path.exists("{}{}".format(FP_PATH,i)):
+                os.mkdir("{}{}".format(FP_PATH,i))
+
+
         # Iterate over the data loader and collect predictions and ground truth
+        FP_count = 0
         for i, (inputs, targets) in enumerate(dataLoader):
+            # if i >0: break
             print("\rtest evaluation: "+str(i)+" of "+str(len(dataLoader)-1),end='')
             inputs = inputs.cuda()
             targets = targets.cuda()
@@ -138,19 +214,15 @@ def evalModel(model):
             results.extend(np.argmax(predictions, axis=1))
             labels.extend(targets.cpu().numpy())
             accuracies.extend(targets.cpu().numpy() == np.argmax(predictions, axis=1))
+           
         print("") ## newline for output formatting
         
 
-        df = pd.DataFrame(list(zip(results, labels,confidences, accuracies)), columns=["prediction","label","confidence","accuracy"])
-        print("Output DataFrame head")
-        print(df.head())
-
-        labelClasses= [0,1,2,3,4,5,6,7,8,9]
 
         build_classification_report(labels,results, labelClasses)
+                
 
-        build_confusion_matrix(labels,results, labelClasses)
-    
+
 
     except Exception as e:        
         traceback.print_exc()
@@ -161,21 +233,40 @@ def evalModel(model):
 # check if the module is called as an entry point or not.
 if __name__ == '__main__':
     #check for command line arguments
-    if len(sys.argv) > 1:
-        modelName = sys.argv[1]
-        print("loading model stored at: '", modelName +"'")
-        #load the model and run evaluation code
-        try:
-            checkpoint = torch.load(modelName)   
-            if isinstance(checkpoint, torch.jit.ScriptModule):
-                print("warning, the supplied model has been loaded as a torchscript model, take caution")
-            device = torch.device('cuda:0')
-            checkpoint = checkpoint.to(device)
-            evalModel(checkpoint)
+    # Remove 1st argument from the
+    # list of command line arguments
+    # Initialize parser
+    parser = argparse.ArgumentParser()
+    
+    # Adding optional argument
+    
+    parser.add_argument('model', type=str)
 
-        except Exception  as e:
-            traceback.print_exc()
-            print("could not load torch model file, please check error msg above")
+    parser.add_argument("--data",  help = "Dataset folder")
+    # Read arguments from command line
+    args = parser.parse_args()
+    if args.data is not None:
+        DATASET_PATH = args.data
+        train_dataset, validation_dataset, test_dataset = buildDataset()
+    else:
+        from datasets_cifar10 import train_dataset, validation_dataset, test_dataset
+        print("No dataset path provided, using default dataset:cifar10")
+        
+                
+    modelName = args.model
+    print("loading model stored at: '", modelName +"'")
+    #load the model and run evaluation code
+    try:
+        checkpoint = torch.load(modelName)   
+        if isinstance(checkpoint, torch.jit.ScriptModule):
+            print("warning, the supplied model has been loaded as a torchscript model, take caution")
+        device = torch.device('cuda:0')
+        checkpoint = checkpoint.to(device)
+        evalModel(checkpoint,test_dataset)
+
+    except Exception  as e:
+        traceback.print_exc()
+        print("could not load torch model file, please check error msg above")
 
             
     else:
