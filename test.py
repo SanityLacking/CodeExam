@@ -226,6 +226,12 @@ def evalModel(model,test_dataset):
     
         
 
+
+        #save false positive to folder
+        
+
+
+
     except Exception as e:        
         traceback.print_exc()
         print("model was not able to run, please check the exception message:")
