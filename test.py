@@ -48,7 +48,7 @@ def build_confusion_matrix(labels, predictions, labelClasses=[],Print=True):
 
     return True
         
-def compute_calibration_metrics(model, dataLoader):
+def compute_calibration_metrics(model, dataLoader, labelClasses, K=10):
     ''' computes the calibration metrics for the loaded model against the chosen dataset.
         model's input shape and output shape needs to match provided dataset input shape and target set respectively.
 
@@ -61,7 +61,16 @@ def compute_calibration_metrics(model, dataLoader):
     num_samples = 0
     confidences = []
     accuracies = []
-
+    num_classes= len(labelClasses)
+    resultsDict = {}
+    results = []
+    num_samples = 0
+    confidences = []
+    accuracies = []
+    outputs = []
+    results = []
+    probability=[]
+    labels = []
     # Iterate over the data loader and collect predictions and ground truth
     for i, (inputs, targets) in enumerate(dataLoader):
     # for inputs, targets in dataloader:
@@ -71,18 +80,22 @@ def compute_calibration_metrics(model, dataLoader):
         # Make predictions
         outputs = model(inputs)
         predictions = F.softmax(outputs, dim=1).detach().cpu().numpy()
-
+        results.extend(predictions)
+        probability.extend(np.amax(predictions, axis=1))
         # Update calibration metrics
         num_samples += len(targets)
-        confidences.extend(predictions[:, 1])
+        confidences.extend(np.amax(predictions,axis=1))
+        labels.extend(targets.cpu().numpy())
         accuracies.extend(targets.cpu().numpy() == np.argmax(predictions, axis=1))
 
     # Calculate expected calibration error
     ece = 0
     confidences = np.array(confidences)
     accuracies = np.array(accuracies)
-    bin_boundaries = np.linspace(0, 1, 11)
-    for bin_idx in range(10):
+    print(confidences)
+
+    bin_boundaries = np.linspace(0, 1, K+1)
+    for bin_idx in range(K):
         in_bin = np.logical_and(confidences >= bin_boundaries[bin_idx], confidences < bin_boundaries[bin_idx+1])
         if np.sum(in_bin) > 0:
             ece += np.abs(np.mean(accuracies[in_bin]) - np.mean(confidences[in_bin]))
@@ -141,17 +154,13 @@ def evalModel(model):
         print("") ## newline for output formatting
         
 
-        # df = pd.DataFrame(list(zip(results, labels,confidences, accuracies)), columns=["prediction","label","confidence","accuracy"])
-        # print("Output DataFrame head")
-        # print(df.head())
-
         labelClasses= [0,1,2,3,4,5,6,7,8,9]
 
         # build_classification_report(labels,results, labelClasses)
 
         # build_confusion_matrix(labels,results, labelClasses)
     
-        expected_calibration_error, max_calibration_error = compute_calibration_metrics(model, dataLoader)
+        expected_calibration_error, max_calibration_error = compute_calibration_metrics(model, dataLoader,labelClasses)
         print("Expected Calibration Error: {:.2f}%".format(expected_calibration_error))
         print("Max Calibration Error: {:.2f}%".format(max_calibration_error))
 
