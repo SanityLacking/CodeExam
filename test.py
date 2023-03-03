@@ -13,11 +13,17 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report
 from datetime import datetime
 from PIL import Image
+from sklearn.cluster import KMeans
+from torchvision import transforms
+from torchvision.datasets import ImageFolder
+from torch.utils.data import DataLoader, random_split
+import argparse
 
 #local imports
-from datasets_cifar10 import train_dataset, test_dataset
+# from datasets_cifar10 import train_dataset, test_dataset
 from model import Net
 FP_PATH = "./results/false_positives/"
+DATASET_PATH ="./data/cifar-10-batches-py/"
 
 
 def build_classification_report(labels, predictions, labelClasses=[],Print=True):
@@ -137,13 +143,33 @@ def compute_calibration_metrics(model, dataLoader, labelClasses, K=10):
     # Return calibration metrics
     return ece / 10, mce
 
- 
+def buildDataset():
+    ''' finds and builds the dataset from the provided path
+    '''
+    transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
 
-def evalModel(model):
+    # Load the dataset using the ImageFolder class
+    train_dataset = ImageFolder(root=DATASET_PATH+"/train", transform=transform)
+
+    test_dataset = ImageFolder(root=DATASET_PATH+"/test",  transform=transform)
+    val_size = int(len(train_dataset) * 0.1)
+    train_size = int(len(train_dataset)*0.9)
+    train_dataset, validation_dataset = random_split(train_dataset, [train_size, val_size])
+
+    return train_dataset, validation_dataset, test_dataset
+
+
+def evalModel(model,test_dataset):
     try:
         #load the dataset and set the batchsize
         batch_size = 32        
         # train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
+        
         dataLoader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
         
     except Exception as e:
@@ -225,21 +251,40 @@ def evalModel(model):
 # check if the module is called as an entry point or not.
 if __name__ == '__main__':
     #check for command line arguments
-    if len(sys.argv) > 1:
-        modelName = sys.argv[1]
-        print("loading model stored at: '", modelName +"'")
-        #load the model and run evaluation code
-        try:
-            checkpoint = torch.load(modelName)   
-            if isinstance(checkpoint, torch.jit.ScriptModule):
-                print("warning, the supplied model has been loaded as a torchscript model, take caution")
-            device = torch.device('cuda:0')
-            checkpoint = checkpoint.to(device)
-            evalModel(checkpoint)
+    # Remove 1st argument from the
+    # list of command line arguments
+    # Initialize parser
+    parser = argparse.ArgumentParser()
+    
+    # Adding optional argument
+    
+    parser.add_argument('model', type=str)
 
-        except Exception  as e:
-            traceback.print_exc()
-            print("could not load torch model file, please check error msg above")
+    parser.add_argument("--data",  help = "Dataset folder")
+    # Read arguments from command line
+    args = parser.parse_args()
+    if args.data is not None:
+        DATASET_PATH = args.data
+        train_dataset, validation_dataset, test_dataset = buildDataset()
+    else:
+        from datasets_cifar10 import train_dataset, validation_dataset, test_dataset
+        print("No dataset path provided, using default dataset:cifar10")
+        
+                
+    modelName = args.model
+    print("loading model stored at: '", modelName +"'")
+    #load the model and run evaluation code
+    try:
+        checkpoint = torch.load(modelName)   
+        if isinstance(checkpoint, torch.jit.ScriptModule):
+            print("warning, the supplied model has been loaded as a torchscript model, take caution")
+        device = torch.device('cuda:0')
+        checkpoint = checkpoint.to(device)
+        evalModel(checkpoint,test_dataset)
+
+    except Exception  as e:
+        traceback.print_exc()
+        print("could not load torch model file, please check error msg above")
 
             
     else:
