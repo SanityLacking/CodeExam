@@ -72,7 +72,7 @@ def compute_calibration_metrics(model, dataLoader, labelClasses, K=10):
     probability=[]
     labels = []
     # Iterate over the data loader and collect predictions and ground truth
-    for i, (inputs, targets) in enumerate(dataLoader):
+    for inputs, targets in dataLoader:
     # for inputs, targets in dataloader:
         inputs = inputs.cuda()
         targets = targets.cuda()
@@ -92,18 +92,41 @@ def compute_calibration_metrics(model, dataLoader, labelClasses, K=10):
     ece = 0
     confidences = np.array(confidences)
     accuracies = np.array(accuracies)
-    print(confidences)
+
+    bin_calibration = []
+
 
     bin_boundaries = np.linspace(0, 1, K+1)
     for bin_idx in range(K):
         in_bin = np.logical_and(confidences >= bin_boundaries[bin_idx], confidences < bin_boundaries[bin_idx+1])
+
         if np.sum(in_bin) > 0:
-            ece += np.abs(np.mean(accuracies[in_bin]) - np.mean(confidences[in_bin]))
+            bin_cal = np.abs(np.mean(accuracies[in_bin]) - np.mean(confidences[in_bin]))
+            bin_calibration.append( bin_cal)
+            ece += bin_cal
+        else:
+            bin_calibration.append(0)
     ece *= 100
+    
+    sn.set_theme(style="whitegrid")
+    # print(bin_calibration)
+    plt.figure(figsize = (10,7))
+    for i , value in enumerate(bin_calibration):
+        plt.text(labelClasses[i], value+(value*0.01), "{:.2f}%".format(value*100), horizontalalignment='center',     verticalalignment='center')
+    graph_data= pd.DataFrame([bin_calibration],columns=[labelClasses])
+    plt.bar(labelClasses,bin_calibration,)
+    plt.title("Calibration error per class")
+    plt.xticks(labelClasses)
+    plt.ylabel("Error %")
+    plt.xlabel("Class ID")
+    graph_name = "./results/{}_{}_calibration_graph.png".format(checkpoint.__class__.__name__,datetime.now().strftime("%Y_%m_%d-%I_%M_%S_%p"))
+    plt.savefig(graph_name)
+
+    
 
     # Calculate max calibration error
     mce = 0
-    for bin_idx in range(10):
+    for bin_idx in range(K):
         in_bin = np.logical_and(confidences >= bin_boundaries[bin_idx], confidences < bin_boundaries[bin_idx+1])
         if np.sum(in_bin) > 0:
             mce = max(mce, np.abs(np.mean(accuracies[in_bin]) - np.mean(confidences[in_bin])) * 100)
