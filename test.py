@@ -4,6 +4,7 @@ from sklearn.metrics import brier_score_loss
 from torch.utils.data import DataLoader
 import numpy as np
 import sys
+import os
 import traceback
 from tqdm import tqdm
 import pandas as pd
@@ -11,10 +12,13 @@ import seaborn as sn
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report
 from datetime import datetime
+from PIL import Image
 
 #local imports
 from datasets_cifar10 import train_dataset, test_dataset
 from model import Net
+FP_PATH = "./results/false_positives/"
+
 
 def build_classification_report(labels, predictions, labelClasses=[],Print=True):
     ''''
@@ -95,7 +99,6 @@ def compute_calibration_metrics(model, dataLoader, labelClasses, K=10):
 
     bin_calibration = []
 
-
     bin_boundaries = np.linspace(0, 1, K+1)
     for bin_idx in range(K):
         in_bin = np.logical_and(confidences >= bin_boundaries[bin_idx], confidences < bin_boundaries[bin_idx+1])
@@ -158,8 +161,20 @@ def evalModel(model):
         results = []
         labels = []
         
+        labelClasses= [0,1,2,3,4,5,6,7,8,9]
+        
+        #   make sure the directory for the FP images exists
+        for  i in labelClasses:
+            if not os.path.exists("{}{}".format(FP_PATH,i)):
+                os.mkdir("{}{}".format(FP_PATH,i))
+
+        import torchvision.transforms as T
+        from PIL import Image
+        transform = T.ToPILImage()
         # Iterate over the data loader and collect predictions and ground truth
+        FP_count = 0
         for i, (inputs, targets) in enumerate(dataLoader):
+            # if i >0: break
             print("\rtest evaluation: "+str(i)+" of "+str(len(dataLoader)-1),end='')
             inputs = inputs.cuda()
             targets = targets.cuda()
@@ -174,10 +189,18 @@ def evalModel(model):
             results.extend(np.argmax(predictions, axis=1))
             labels.extend(targets.cpu().numpy())
             accuracies.extend(targets.cpu().numpy() == np.argmax(predictions, axis=1))
+            for j, (target) in enumerate(targets):
+                predictedLabel = np.argmax(predictions[j])
+                if target.cpu() != predictedLabel:
+                    FP_count += 1
+                    n = inputs[j].cpu().numpy()
+                    img = Image.fromarray(((n.transpose(1,2,0)*0.5+0.5)*255).astype(np.uint8))
+
+                    img.save("{}{}/FP_{}_ActualLabel_{}.jpg".format(FP_PATH,predictedLabel,FP_count,target.cpu()))
+
         print("") ## newline for output formatting
         
 
-        labelClasses= [0,1,2,3,4,5,6,7,8,9]
 
         # build_classification_report(labels,results, labelClasses)
 
@@ -186,6 +209,12 @@ def evalModel(model):
         expected_calibration_error, max_calibration_error = compute_calibration_metrics(model, dataLoader,labelClasses)
         print("Expected Calibration Error: {:.2f}%".format(expected_calibration_error))
         print("Max Calibration Error: {:.2f}%".format(max_calibration_error))
+
+
+        #save false positive to folder
+        
+
+
 
     except Exception as e:        
         traceback.print_exc()
