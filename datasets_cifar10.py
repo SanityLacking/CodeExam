@@ -10,7 +10,8 @@ from torch.utils.data import DataLoader, random_split
 # Define the data transforms
 transform = transforms.Compose(
     [transforms.ToTensor(),
-     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
 
 # Load the training set
 train_dataset = torchvision.datasets.CIFAR10(root='./data', train=True,

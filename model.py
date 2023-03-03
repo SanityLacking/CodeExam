@@ -25,31 +25,34 @@ class Net(nn.Module):
         x = self.fc3(x)
         return x
 
-# initialize the network
-net = Net()
-
-# define loss function and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
 
 
+if __name__ == '__main__':
+    # initialize the network
+    net = Net()
 
-# Print model's state_dict
-print("Model's state_dict:")
-for param_tensor in net.state_dict():
-    print(param_tensor, "\t", net.state_dict()[param_tensor].size())
-
-# Print optimizer's state_dict
-print("Optimizer's state_dict:")
-for var_name in optimizer.state_dict():
-    print(var_name, "\t", optimizer.state_dict()[var_name])
+    # define loss function and optimizer
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
 
 
-torch.save(net,os.path.join('./models/', 'model.pt'))
+
+    # Print model's state_dict
+    print("Model's state_dict:")
+    for param_tensor in net.state_dict():
+        print(param_tensor, "\t", net.state_dict()[param_tensor].size())
+
+    # Print optimizer's state_dict
+    print("Optimizer's state_dict:")
+    for var_name in optimizer.state_dict():
+        print(var_name, "\t", optimizer.state_dict()[var_name])
 
 
-# torch.save(net , os.path.join('./models/', 'model.pth'))
-batch = next(iter(trainloader))
-# print(batch)
-# traced_model = torch.jit.script(net)
-# torch.jit.save(traced_model,os.path.join('./models/', 'model_jit.pt'))
+    torch.save(net,os.path.join('./models/', 'model.pt'))
+
+
+    # torch.save(net , os.path.join('./models/', 'model.pth'))
+    batch = next(iter(trainloader))
+    # print(batch)
+    # traced_model = torch.jit.script(net)
+    # torch.jit.save(traced_model,os.path.join('./models/', 'model_jit.pt'))

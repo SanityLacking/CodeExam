@@ -6,12 +6,12 @@ Setup: <br>
 
     1. Download the data <br>
         Cifar10: <br>
-        || python datasets_cifar10.py
+        python datasets_cifar10.py
     2. Prepare the model <br>
         either use your own model, or run <i>model.py</i> to create a simple test model
         
 Run the Script: <br>
-    || python test.py
+    python test.py
 
 
 
