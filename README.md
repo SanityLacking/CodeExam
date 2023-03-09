@@ -33,6 +33,9 @@ This is more a limitation of pytorch and its model storage techniques, to solve 
 <br>
 For the purposes of this exam, I stuck with three options, either the model is loaded as a statedict, the entire model, or as a torchscript file. For the first two options it is assumed that the models structure is available to the python environment. 
 
+09/03 update
+An alternative method for model loading would be converting the torch model to onnx and reading that in for the script. I did not initially consider this trying to keep the script to torch only, but in hindsight this would be a suitable solution to the model loading problem as well.
+
 #### False Positives
 I was not able to fully complete the suggested unsupervised approach upon the false positives to find patterns, instead I added a knee test functionality for each class to illustrate the relationship of accuracy to model confidence for each class. This too could be improved to focus on class entropy rather then class throughput count. 
 
